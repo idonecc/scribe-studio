@@ -73,29 +73,18 @@ scribe-studio/
 ### 一次性 setup
 
 ```bash
-./scripts/fetch-bins.sh
-# brew install ffmpeg whisper-cpp, 软链到 resources/bin/
+./scripts/fetch-bins.sh           # 默认 dev 模式：brew install ffmpeg + whisper-cpp，软链到 resources/bin/
+./scripts/fetch-bins.sh --release # 编静态二进制（evermeet ffmpeg + 源码编 whisper-cli），给 CI / 本地打包用
 ```
 
-首次用需要下载 whisper 模型到 `~/Library/Application Support/Scribe/models/`：
-
-```bash
-# 小模型，77 MB，质量一般但 2s 出结果
-curl -L -o ~/Library/Application\ Support/Scribe/models/ggml-tiny.bin \
-  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
-
-# 推荐，148 MB，中文质量明显更好
-curl -L -o ~/Library/Application\ Support/Scribe/models/ggml-base.bin \
-  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
-```
-
-v0.2c 会把这步集成到 Settings 页的一键下载。
+Whisper 模型从 App 内一键下载（设置 → 转写），不需要手动 curl。
 
 ### 开发循环
 
 ```bash
-wails dev        # 前后端热更新，DevTools 启用
-wails build      # 产出 build/bin/scribe-studio.app
+wails dev                          # 热更新 + DevTools
+wails build                        # dev 构建，走 resources/bin/ 的 brew symlink
+./scripts/build-release.sh v0.2.0  # release 构建：注入 ldflags + bundle 静态二进制进 .app
 ```
 
 ### 跑 smoke
@@ -114,9 +103,10 @@ go run -tags realsmoke ./scripts/realsmoke/main.go path/to/video.mp4 base
 |---|---|---|
 | v0.1 | 视频号下载桌面封装（sph-downloader） | ✓ 完成 |
 | v0.2a | 改名 Scribe、下载完成自动转写、Transcripts 页 | ✓ 完成 |
-| v0.2b | `@uiw/react-md-editor` 轻量编辑器 + 种子词表 + srt/md 导出 | 🟡 下一步 |
-| v0.2c | LLM 校对 + SuggestionChip + Typeless 回流词表 + AI Settings | ⏳ |
-| v0.2d | macOS codesign/notarization + release.yml + 打包 ffmpeg+whisper 进 bundle | ⏳ |
+| v0.2b | `@uiw/react-md-editor` 轻量编辑器 + 种子词表 + srt/md 导出 | ✓ 完成 |
+| v0.2c | LLM 校对 + SuggestionChip + Typeless 回流词表 + AI Settings | ✓ 完成 |
+| v0.2d | macOS ldflags 注入 + 静态二进制 bundle + 模型下载 UI + release CI | ✓ 完成 |
+| v0.2e | Apple notarization + Intel mac / Windows binaries | ⏳ |
 | v0.3 | yt-dlp → B 站 / YouTube；Downloads 页的 MediaSource 抽象 | ⏳ |
 
 ## License
