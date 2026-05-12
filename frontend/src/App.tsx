@@ -5,6 +5,7 @@ import { Sidebar } from '@/components/layout/sidebar'
 import { Topbar } from '@/components/layout/topbar'
 import { DashboardPage } from '@/pages/Dashboard'
 import { DownloadsPage } from '@/pages/Downloads'
+import { TranscriptsPage } from '@/pages/Transcripts'
 import { LogsPage } from '@/pages/Logs'
 import { SettingsPage } from '@/pages/Settings'
 import { AboutPage } from '@/pages/About'
@@ -40,7 +41,7 @@ export function App() {
     <HashRouter>
       <div className="flex h-screen overflow-hidden bg-background text-foreground selection:bg-primary/30">
         {/* Subtle ambient gradient — same idea as Prism's hero gradient */}
-        <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(16,185,129,0.10),rgba(255,255,255,0))]" />
+        <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(168,85,247,0.10),rgba(255,255,255,0))]" />
         <div className="z-10 flex h-full w-full">
           <Sidebar />
           <div className="relative flex flex-1 flex-col overflow-hidden">
@@ -50,6 +51,7 @@ export function App() {
                 <Routes>
                   <Route path="/" element={<DashboardPage />} />
                   <Route path="/downloads" element={<DownloadsPage />} />
+                  <Route path="/transcripts" element={<TranscriptsPage />} />
                   <Route path="/logs" element={<LogsPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
                   <Route path="/about" element={<AboutPage />} />

@@ -8,17 +8,26 @@ import {
 } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Download as DownloadIcon, Film, FolderOpen } from 'lucide-react'
-import { ListTasks, OpenInFinder } from '../../wailsjs/go/scribe/App'
-import type { sphkit } from '../../wailsjs/go/models'
+import { Download as DownloadIcon, Film, FolderOpen, FileText } from 'lucide-react'
+import {
+  ListTasks,
+  OpenInFinder,
+  ListTranscripts,
+  RetryTranscribe,
+} from '../../wailsjs/go/scribe/App'
+import type { pipeline, sphkit } from '../../wailsjs/go/models'
+import { EventsOn } from '../../wailsjs/runtime/runtime'
+import { TranscribeProgress } from '@/components/TranscribeProgress'
 
 type Task = sphkit.TaskSummary
+type Job = pipeline.Job
 
 export function DownloadsPage() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [total, setTotal] = useState(0)
   const [filter, setFilter] = useState<'all' | 'running' | 'done' | 'error'>('all')
   const [loading, setLoading] = useState(true)
+  const [transcripts, setTranscripts] = useState<Record<string, Job>>({})
 
   useEffect(() => {
     let cancelled = false
@@ -41,6 +50,28 @@ export function DownloadsPage() {
       clearInterval(id)
     }
   }, [filter])
+
+  // Parallel channel: transcribe jobs keyed by taskID, merged with the
+  // per-row data so the Downloads list can show both progress states.
+  useEffect(() => {
+    let cancelled = false
+    ListTranscripts()
+      .then((jobs) => {
+        if (cancelled) return
+        const map: Record<string, Job> = {}
+        ;(jobs ?? []).forEach((j) => (map[j.taskID] = j))
+        setTranscripts(map)
+      })
+      .catch(() => {})
+
+    const off = EventsOn('transcribe:job', (j: Job) => {
+      setTranscripts((prev) => ({ ...prev, [j.taskID]: j }))
+    })
+    return () => {
+      cancelled = true
+      off()
+    }
+  }, [])
 
   const filters: { key: typeof filter; label: string }[] = [
     { key: 'all', label: '全部' },
@@ -87,7 +118,7 @@ export function DownloadsPage() {
         ) : (
           <div className="divide-y divide-border/40">
             {tasks.map((t) => (
-              <TaskRow key={t.id} task={t} />
+              <TaskRow key={t.id} task={t} transcript={transcripts[t.id]} />
             ))}
           </div>
         )}
@@ -116,7 +147,7 @@ function EmptyState({
   )
 }
 
-function TaskRow({ task }: { task: Task }) {
+function TaskRow({ task, transcript }: { task: Task; transcript?: Job }) {
   const percent =
     task.size > 0 ? Math.min(100, Math.round((task.downloaded / task.size) * 100)) : 0
 
@@ -131,6 +162,14 @@ function TaskRow({ task }: { task: Task }) {
   async function reveal() {
     if (!task.path || !task.filename) return
     await OpenInFinder(`${task.path}/${task.filename}`)
+  }
+
+  async function triggerTranscribe() {
+    try {
+      await RetryTranscribe(task.id)
+    } catch {
+      /* surfaced via toast in TranscriptsPage; silent here */
+    }
   }
 
   return (
@@ -175,6 +214,21 @@ function TaskRow({ task }: { task: Task }) {
 
       <div className="flex shrink-0 items-center gap-2">
         <StatusBadge status={task.status} />
+        {(task.status === 'done' || task.status === 'completed') && (
+          transcript ? (
+            <TranscribeProgress job={transcript} />
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1 px-2"
+              onClick={triggerTranscribe}
+              title="转写这条"
+            >
+              <FileText className="h-3.5 w-3.5" /> 转写
+            </Button>
+          )
+        )}
         {task.status === 'done' && (
           <Button variant="ghost" size="sm" className="h-7 px-2" onClick={reveal} title="在 Finder 中显示">
             <FolderOpen className="h-3.5 w-3.5" />

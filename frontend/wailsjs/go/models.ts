@@ -1,5 +1,72 @@
+export namespace pipeline {
+	
+	export class Job {
+	    taskID: string;
+	    title: string;
+	    videoPath: string;
+	    stage: string;
+	    progress: number;
+	    progressMsg?: string;
+	    transcriptPath?: string;
+	    srtPath?: string;
+	    error?: string;
+	    retries: number;
+	    model?: string;
+	    language?: string;
+	    duration?: number;
+	    createdAt: string;
+	    updatedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Job(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.taskID = source["taskID"];
+	        this.title = source["title"];
+	        this.videoPath = source["videoPath"];
+	        this.stage = source["stage"];
+	        this.progress = source["progress"];
+	        this.progressMsg = source["progressMsg"];
+	        this.transcriptPath = source["transcriptPath"];
+	        this.srtPath = source["srtPath"];
+	        this.error = source["error"];
+	        this.retries = source["retries"];
+	        this.model = source["model"];
+	        this.language = source["language"];
+	        this.duration = source["duration"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	    }
+	}
+
+}
+
 export namespace scribe {
 	
+	export class ModelSummary {
+	    key: string;
+	    filename: string;
+	    url: string;
+	    bytes: number;
+	    label: string;
+	    installed: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.filename = source["filename"];
+	        this.url = source["url"];
+	        this.bytes = source["bytes"];
+	        this.label = source["label"];
+	        this.installed = source["installed"];
+	    }
+	}
 	export class ProxyStatus {
 	    running: boolean;
 	    interceptorAddr: string;
@@ -16,6 +83,22 @@ export namespace scribe {
 	        this.interceptorAddr = source["interceptorAddr"];
 	        this.apiAddr = source["apiAddr"];
 	        this.lastError = source["lastError"];
+	    }
+	}
+	export class TranscribeSettings {
+	    autoEnabled: boolean;
+	    model: string;
+	    language: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TranscribeSettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.autoEnabled = source["autoEnabled"];
+	        this.model = source["model"];
+	        this.language = source["language"];
 	    }
 	}
 	export class VersionInfo {
@@ -107,6 +190,65 @@ export namespace sphkit {
 	        this.total = source["total"];
 	        this.page = source["page"];
 	        this.pageSize = source["pageSize"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
+export namespace transcribe {
+	
+	export class Segment {
+	    start: number;
+	    end: number;
+	    text: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Segment(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.start = source["start"];
+	        this.end = source["end"];
+	        this.text = source["text"];
+	    }
+	}
+	export class Result {
+	    language: string;
+	    model: string;
+	    segments: Segment[];
+	    fullText: string;
+	    duration: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Result(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.language = source["language"];
+	        this.model = source["model"];
+	        this.segments = this.convertValues(source["segments"], Segment);
+	        this.fullText = source["fullText"];
+	        this.duration = source["duration"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
