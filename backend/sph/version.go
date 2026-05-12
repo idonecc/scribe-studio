@@ -11,10 +11,11 @@ type VersionInfo struct {
 // These are injected at build time via -ldflags "-X ..." in the release
 // workflow; zero values are fine for dev.
 var (
-	BuildVersion   = "0.0.0-dev"
-	BuildCoreRev   = "unknown"
-	BuildCommit    = "unknown"
-	BuildDate      = "unknown"
+	BuildVersion = "0.0.0-dev"
+	BuildMode    = "debug"
+	BuildCoreRev = "unknown"
+	BuildCommit  = "unknown"
+	BuildDate    = "unknown"
 )
 
 func (a *App) GetVersion() VersionInfo {

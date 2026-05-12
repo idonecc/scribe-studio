@@ -1,6 +1,12 @@
 package sph
 
-// ProxyStatus is returned to the frontend to drive the status indicator.
+import (
+	"wx_channel/pkg/sphkit"
+)
+
+// ProxyStatus is the shape returned to the React frontend. It maps 1:1 to
+// sphkit.Status but is redeclared here so the Wails TypeScript generator
+// places it in the sph package (the frontend imports it as sph.ProxyStatus).
 type ProxyStatus struct {
 	Running         bool   `json:"running"`
 	InterceptorAddr string `json:"interceptorAddr"`
@@ -8,32 +14,43 @@ type ProxyStatus struct {
 	LastError       string `json:"lastError,omitempty"`
 }
 
-// StartProxy boots the embedded MITM interceptor and the API server.
-// Phase 1 placeholder: this will be wired to wx_channel's ServerManager
-// once backend/core is pulled in via git subtree.
+// StartProxy boots the embedded MITM + API server pair. The kit instance
+// is lazily created on first Start so the app window opens instantly and we
+// only pay the config-loading cost when the user actually asks to start.
 func (a *App) StartProxy() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.running = true
-	return nil
+
+	if a.kit == nil {
+		kit, err := sphkit.New(BuildVersion, BuildMode)
+		if err != nil {
+			return err
+		}
+		a.kit = kit
+	}
+	return a.kit.Start()
 }
 
-// StopProxy gracefully shuts the interceptor + API server down.
+// StopProxy gracefully shuts the proxy down. Safe to call when not running.
 func (a *App) StopProxy() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.running = false
-	return nil
+
+	if a.kit == nil {
+		return nil
+	}
+	return a.kit.Stop()
 }
 
-// GetProxyStatus reports the current state; the React dashboard polls it
-// and also subscribes to "proxy:status" events for push updates.
+// GetProxyStatus is what the dashboard polls and also what we emit via
+// runtime.EventsEmit("proxy:status", …) when state changes.
 func (a *App) GetProxyStatus() ProxyStatus {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return ProxyStatus{
-		Running:         a.running,
-		InterceptorAddr: "127.0.0.1:2023",
-		APIAddr:         "127.0.0.1:2024",
+
+	if a.kit == nil {
+		return ProxyStatus{}
 	}
+	s := a.kit.Status()
+	return ProxyStatus(s)
 }

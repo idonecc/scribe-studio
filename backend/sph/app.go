@@ -3,18 +3,18 @@ package sph
 import (
 	"context"
 	"sync"
+
+	"wx_channel/pkg/sphkit"
 )
 
 // App is the Wails application struct. It owns the lifecycle of the embedded
-// wx_channels_download core (MITM proxy + API server) and exposes control
-// methods to the React frontend via Wails bindings.
+// wx_channel core (MITM proxy + API server) and exposes control methods to
+// the React frontend via Wails bindings.
 type App struct {
 	ctx context.Context
 
-	mu      sync.Mutex
-	running bool
-	// TODO(phase1): hold a reference to the wx_channel ServerManager once
-	// backend/core is wired up via git subtree.
+	mu  sync.Mutex
+	kit *sphkit.Instance
 }
 
 func NewApp() *App {
