@@ -7,14 +7,25 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { CheckCircle2, AlertCircle, Sparkles, Trash2 } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import {
+  CheckCircle2,
+  AlertCircle,
+  Sparkles,
+  Trash2,
+  Download,
+  Cpu,
+} from 'lucide-react'
 import {
   GetAISettings,
   SetAISettings,
   TestAIConnection,
   ClearProofreadCache,
+  ListModels,
+  DownloadModel,
 } from '../../wailsjs/go/scribe/App'
-import type { proofread } from '../../wailsjs/go/models'
+import { EventsOn } from '../../wailsjs/runtime/runtime'
+import type { proofread, scribe } from '../../wailsjs/go/models'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -56,7 +67,7 @@ export function SettingsPage() {
       {tab === 'ai' && <AITab />}
       {tab === 'proxy' && <PlaceholderTab title="代理" note="host/port/系统代理开关" />}
       {tab === 'download' && <PlaceholderTab title="下载" note="下载目录、并发、命名模板" />}
-      {tab === 'transcribe' && <PlaceholderTab title="转写" note="模型、语言、自动触发（部分绑定已在 Dashboard）" />}
+      {tab === 'transcribe' && <TranscribeTab />}
       {tab === 'advanced' && <AdvancedTab />}
     </div>
   )
@@ -336,3 +347,141 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 const inputCls =
   'w-full rounded-md border border-border/60 bg-background px-3 py-1.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30'
+
+type Model = scribe.ModelSummary
+
+function TranscribeTab() {
+  const [models, setModels] = useState<Model[]>([])
+  const [loading, setLoading] = useState(true)
+  const [progress, setProgress] = useState<Record<string, { frac: number; msg: string }>>({})
+  const [downloading, setDownloading] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    let cancelled = false
+    async function refresh() {
+      try {
+        const list = await ListModels()
+        if (!cancelled) setModels(list ?? [])
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    refresh()
+
+    const offProgress = EventsOn(
+      'model:progress',
+      (p: { key: string; fraction: number; message: string }) => {
+        setProgress((prev) => ({ ...prev, [p.key]: { frac: p.fraction, msg: p.message } }))
+      }
+    )
+    const offDone = EventsOn('model:done', (p: { key: string; error?: string }) => {
+      setDownloading((prev) => ({ ...prev, [p.key]: false }))
+      setProgress((prev) => {
+        const next = { ...prev }
+        delete next[p.key]
+        return next
+      })
+      if (p.error) {
+        toast.error(`下载失败：${p.error}`)
+      } else {
+        toast.success('模型已安装')
+      }
+      refresh()
+    })
+    return () => {
+      cancelled = true
+      offProgress()
+      offDone()
+    }
+  }, [])
+
+  async function install(key: string) {
+    setDownloading((prev) => ({ ...prev, [key]: true }))
+    try {
+      await DownloadModel(key)
+      toast.info('下载开始…')
+    } catch (e) {
+      setDownloading((prev) => ({ ...prev, [key]: false }))
+      toast.error(String(e))
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Cpu className="h-4 w-4 text-muted-foreground" />
+            Whisper 模型
+          </CardTitle>
+          <CardDescription>
+            本地跑 ASR 必需。模型文件存在{' '}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+              ~/Library/Application Support/Scribe/models/
+            </code>
+            ；越大质量越好、越慢。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {loading ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">读取中…</div>
+          ) : (
+            models.map((m) => {
+              const p = progress[m.key]
+              const isDownloading = downloading[m.key] || !!p
+              const pct = p && p.frac > 0 ? Math.round(p.frac * 100) : 0
+              return (
+                <div
+                  key={m.key}
+                  className="flex items-center gap-3 rounded-lg border border-border/40 bg-card/40 px-4 py-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm font-medium">{m.key}</span>
+                      {m.installed && <Badge variant="success">已安装</Badge>}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">{m.label}</div>
+                    {isDownloading && p && (
+                      <div className="mt-2">
+                        <div className="flex justify-between text-[11px] text-muted-foreground">
+                          <span>{p.msg}</span>
+                          {p.frac > 0 && <span>{pct}%</span>}
+                        </div>
+                        <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full rounded-full bg-emerald-500 transition-all"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {!m.installed && !isDownloading && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => install(m.key)}
+                      className="gap-1.5"
+                    >
+                      <Download className="h-3.5 w-3.5" /> 下载
+                    </Button>
+                  )}
+                </div>
+              )
+            })
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>自动转写</CardTitle>
+          <CardDescription>下载完成后是否自动转写。该开关也可以在 Dashboard 右上角。</CardDescription>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground">
+          当前 UI 待补——SetAutoTranscribe / GetTranscribeSettings 绑定已就绪，只差 toggle 组件。
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

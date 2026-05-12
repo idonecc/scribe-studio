@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -9,6 +10,7 @@ import {
   AudioLines,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { GetVersion } from '../../../wailsjs/go/scribe/App'
 
 type NavEntry = {
   to: string
@@ -26,6 +28,13 @@ const entries: NavEntry[] = [
 ]
 
 export function Sidebar() {
+  const [version, setVersion] = useState<string>('dev')
+  useEffect(() => {
+    GetVersion()
+      .then((v) => setVersion(v.app || 'dev'))
+      .catch(() => {})
+  }, [])
+
   return (
     <aside
       className={cn(
@@ -96,7 +105,7 @@ export function Sidebar() {
       </nav>
 
       <div className="p-5 text-[10px] font-medium text-muted-foreground/60">
-        v0.2.0-dev · scribe core
+        v{version.replace(/^v/, '')} · scribe core
       </div>
     </aside>
   )

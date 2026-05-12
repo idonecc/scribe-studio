@@ -17,8 +17,11 @@ import {
   OpenInFinder,
   StartProxy,
   StopProxy,
+  ListModels,
 } from '../../wailsjs/go/scribe/App'
 import type { scribe, sphkit } from '../../wailsjs/go/models'
+import { Link } from 'react-router-dom'
+import { AlertTriangle } from 'lucide-react'
 
 type Status = scribe.ProxyStatus
 type Version = scribe.VersionInfo
@@ -29,10 +32,14 @@ export function DashboardPage() {
   const [version, setVersion] = useState<Version | null>(null)
   const [config, setConfig] = useState<Config | null>(null)
   const [busy, setBusy] = useState(false)
+  const [noModel, setNoModel] = useState(false)
 
   useEffect(() => {
     GetVersion().then(setVersion).catch(() => {})
     GetConfig().then(setConfig).catch(() => {})
+    ListModels()
+      .then((ms) => setNoModel(!(ms ?? []).some((m) => m.installed)))
+      .catch(() => {})
     let cancelled = false
     async function pull() {
       try {
@@ -80,6 +87,23 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {noModel && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-400/40 bg-amber-50/70 p-3 text-sm text-amber-900 dark:bg-amber-900/20 dark:text-amber-200">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <div className="flex-1">
+            <span className="font-medium">未安装 Whisper 模型。</span>
+            <span className="ml-1 text-amber-800/80 dark:text-amber-200/80">
+              先去「设置 → 转写」下载一个 base 模型（148 MB），转写才能跑起来。
+            </span>
+          </div>
+          <Link
+            to="/settings"
+            className="rounded-md bg-amber-500/90 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-amber-500"
+          >
+            去设置
+          </Link>
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader className="flex-row items-start justify-between gap-2 space-y-0">

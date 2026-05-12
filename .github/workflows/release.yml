@@ -1,0 +1,116 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      - "v*.*.*-*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to build (e.g. v0.2.0)"
+        required: true
+        default: "v0.2.0-rc1"
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version tag
+        id: meta
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
+
+      - name: Setup Node + pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      # --- native binaries ----------------------------------------------
+      - name: Cache whisper.cpp build
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/scribe-build
+          key: whisper-cpp-${{ runner.arch }}-${{ hashFiles('scripts/fetch-bins.sh') }}
+          restore-keys: |
+            whisper-cpp-${{ runner.arch }}-
+
+      - name: Build static ffmpeg + whisper-cli
+        run: ./scripts/fetch-bins.sh --release
+
+      # --- app build ---------------------------------------------------
+      - name: Build Scribe .app
+        run: ./scripts/build-release.sh "${{ steps.meta.outputs.tag }}"
+
+      # --- DMG packaging -----------------------------------------------
+      - name: Create DMG
+        run: |
+          set -euxo pipefail
+          app_path="build/bin/scribe-studio.app"
+          dmg_name="scribe-${{ steps.meta.outputs.tag }}-darwin-arm64.dmg"
+          staging=$(mktemp -d)
+          cp -R "$app_path" "$staging/"
+          ln -s /Applications "$staging/Applications"
+          hdiutil create -volname "Scribe" \
+            -srcfolder "$staging" \
+            -ov -format UDZO \
+            "$dmg_name"
+          ls -la "$dmg_name"
+          echo "DMG_PATH=$dmg_name" >> "$GITHUB_ENV"
+
+      - name: Upload DMG as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scribe-darwin-arm64-${{ steps.meta.outputs.tag }}
+          path: ${{ env.DMG_PATH }}
+
+      # --- publish to public release -----------------------------------
+      - name: Publish GitHub release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          generate_release_notes: true
+          files: ${{ env.DMG_PATH }}
+          body: |
+            First-time install notes
+            ------------------------
+            macOS may refuse to open the app because we ship unsigned
+            (no Apple Developer ID yet). To remove the quarantine flag:
+
+                xattr -dr com.apple.quarantine /Applications/Scribe.app
+
+            Whisper models are downloaded on first run from
+            Settings → 转写. Start with `base` (148 MB).

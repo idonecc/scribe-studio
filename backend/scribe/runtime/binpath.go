@@ -16,15 +16,17 @@ var ErrBinaryMissing = errors.New("binary not found")
 // BinaryPath resolves `name` against, in order:
 //  1. resources/bin/<name>  (co-located with the running executable — how
 //     the production .app bundle ships)
-//  2. resources/bin/<name>  (relative to the project root when running
-//     `wails dev` from source)
-//  3. the user's PATH (ultimate fallback; also what the fetch-bins.sh
-//     symlinks point back to on a dev machine)
+//  2. resources/bin/<os>-<arch>/<name>  (per-platform subdir for release
+//     builds that want to ship more than one arch)
+//  3. resources/bin/<name>  (relative to the project root when running
+//     `wails dev` from source; fetch-bins.sh symlinks to brew here)
+//  4. the user's PATH  (ultimate fallback)
 // Returns an absolute path or ErrBinaryMissing.
 func BinaryPath(name string) (string, error) {
 	if goruntime.GOOS == "windows" && filepath.Ext(name) == "" {
 		name += ".exe"
 	}
+	archTag := fmt.Sprintf("%s-%s", goruntime.GOOS, goruntime.GOARCH)
 
 	candidates := []string{}
 
@@ -33,13 +35,18 @@ func BinaryPath(name string) (string, error) {
 		// macOS .app bundle: <App>.app/Contents/MacOS/<exe>
 		// Resources sit at  <App>.app/Contents/Resources/bin/<name>.
 		candidates = append(candidates,
+			filepath.Join(exeDir, "..", "Resources", "bin", archTag, name),
 			filepath.Join(exeDir, "..", "Resources", "bin", name),
+			filepath.Join(exeDir, "resources", "bin", archTag, name),
 			filepath.Join(exeDir, "resources", "bin", name),
 		)
 	}
 
 	if cwd, err := os.Getwd(); err == nil {
-		candidates = append(candidates, filepath.Join(cwd, "resources", "bin", name))
+		candidates = append(candidates,
+			filepath.Join(cwd, "resources", "bin", archTag, name),
+			filepath.Join(cwd, "resources", "bin", name),
+		)
 	}
 
 	for _, c := range candidates {
