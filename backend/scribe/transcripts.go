@@ -89,7 +89,8 @@ func (a *App) GetTranscript(taskID string) (*SavedTranscript, error) {
 
 // SaveTranscript persists user edits back to the transcript JSON.
 // `segments` is the full list (index, start, end, text) in order; we
-// rebuild FullText server-side to keep it in sync.
+// rebuild FullText server-side to keep it in sync, and recompute
+// glossary hits so the Editor's light-green highlights survive edits.
 func (a *App) SaveTranscript(taskID string, segments []transcribe.Segment) error {
 	a.mu.Lock()
 	p := a.pipeline
@@ -118,9 +119,20 @@ func (a *App) SaveTranscript(taskID string, segments []transcribe.Segment) error
 	}
 	existing.Segments = segments
 	existing.FullText = full.String()
-	// Hits are invalidated by edits; the editor is responsible for
-	// refreshing them via a new Apply pass if it still needs them.
-	existing.Hits = nil
+
+	// Recompute highlight positions from the saved text rather than
+	// invalidating them — keeps the green pills visible across save
+	// cycles. Apply-time hits would require re-running the whole
+	// mutation pass which the user didn't ask for.
+	if g := p.Glossary(); g != nil {
+		likes := make([]proofread.SegmentLike, len(segments))
+		for i, s := range segments {
+			likes[i] = proofread.SegmentLike{Index: i, Text: s.Text}
+		}
+		existing.Hits = g.FindCanonicalHits(likes)
+	} else {
+		existing.Hits = nil
+	}
 
 	raw, err := json.MarshalIndent(existing, "", "  ")
 	if err != nil {

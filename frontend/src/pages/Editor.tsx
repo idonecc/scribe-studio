@@ -66,6 +66,42 @@ export function EditorPage() {
 
   useEffect(() => { load() }, [load])
 
+  // Cmd+S / Ctrl+S anywhere in the editor page (including while a
+  // textarea is focused) triggers save. preventDefault stops the
+  // browser's Save-As dialog from flashing in.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault()
+        if (!saving && dirty) save()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // `save` is fresh each render; including it would re-register on
+    // every keystroke. Re-register only when dirty/saving flip.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dirty, saving, taskID, segments])
+
+  // Window close / Wails quit with unsaved edits — at least nudge.
+  useEffect(() => {
+    if (!dirty) return
+    function beforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', beforeUnload)
+    return () => window.removeEventListener('beforeunload', beforeUnload)
+  }, [dirty])
+
+  // Guarded internal nav — sidebar NavLinks + the back button go
+  // through this. Route blocking in RR v7 is an unstable hook we
+  // don't need yet; confirm() at navigation call sites covers it.
+  function guardedNavigate(path: string) {
+    if (dirty && !window.confirm('有未保存的改动，确定离开？')) return
+    navigate(path)
+  }
+
   function updateSegment(i: number, text: string) {
     setSegments((prev) => {
       const next = prev.slice()
@@ -80,6 +116,11 @@ export function EditorPage() {
     setSaving(true)
     try {
       await SaveTranscript(taskID, segments)
+      // Re-read so the recomputed canonical hits land back in state;
+      // the backend refreshes them from the saved text.
+      const t = await GetTranscript(taskID)
+      setSaved(t)
+      setSegments(t.segments ?? segments)
       setDirty(false)
       toast.success('已保存')
     } catch (e) {
@@ -125,7 +166,7 @@ export function EditorPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <button
-          onClick={() => navigate('/transcripts')}
+          onClick={() => guardedNavigate('/transcripts')}
           className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="h-3.5 w-3.5" /> 返回转写列表

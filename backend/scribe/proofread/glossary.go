@@ -337,9 +337,75 @@ type ApplyResult struct {
 	Hits     []Hit
 }
 
-// Apply runs the deterministic pass. The rule order is longest-wrong
-// first across all entries, so "依沃弗" beats "依沃" when both could
-// match; ties break by entry iteration order.
+// FindCanonicalHits scans each segment for exact occurrences of every
+// entry's `right` form. Unlike Apply, this does NOT mutate text; it
+// reports where in the current text a glossary-canonical term already
+// sits. The Editor calls this after a save so the light-green
+// highlights survive user edits — Apply-time hits get invalidated by
+// edits, but the canonical form is a live property of the text and
+// can be recomputed from scratch.
+//
+// Matching is case-sensitive on `right` because Apply produces the
+// exact canonical capitalisation, and we don't want to light up
+// lowercase user typos as if they were canonical.
+func (g *Glossary) FindCanonicalHits(segs []SegmentLike) []Hit {
+	g.mu.RLock()
+	entries := make([]Entry, len(g.Entries))
+	copy(entries, g.Entries)
+	g.mu.RUnlock()
+
+	type rule struct {
+		entryID string
+		right   string
+	}
+	rules := make([]rule, 0, len(entries))
+	for _, e := range entries {
+		if e.Right == "" {
+			continue
+		}
+		rules = append(rules, rule{entryID: e.ID, right: e.Right})
+	}
+	// Longest right first so "EvoMap" beats a hypothetical "Evo".
+	sort.Slice(rules, func(i, j int) bool { return len(rules[i].right) > len(rules[j].right) })
+
+	var hits []Hit
+	for _, s := range segs {
+		occupied := make([]bool, len(s.Text))
+		for _, r := range rules {
+			idx := 0
+			for idx < len(s.Text) {
+				found := strings.Index(s.Text[idx:], r.right)
+				if found < 0 {
+					break
+				}
+				start := idx + found
+				end := start + len(r.right)
+				collides := false
+				for k := start; k < end; k++ {
+					if occupied[k] {
+						collides = true
+						break
+					}
+				}
+				if !collides {
+					for k := start; k < end; k++ {
+						occupied[k] = true
+					}
+					hits = append(hits, Hit{
+						SegmentIndex: s.Index,
+						Start:        start,
+						End:          end,
+						EntryID:      r.entryID,
+						Original:     r.right,
+						Replacement:  r.right,
+					})
+				}
+				idx = end
+			}
+		}
+	}
+	return hits
+}
 func (g *Glossary) Apply(segs []SegmentLike) ApplyResult {
 	g.mu.RLock()
 	entries := make([]Entry, len(g.Entries))
