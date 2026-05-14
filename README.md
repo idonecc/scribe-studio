@@ -111,7 +111,8 @@ go run -tags realsmoke ./scripts/realsmoke/main.go path/to/video.mp4 base
 | v0.2d | macOS ldflags 注入 + 静态二进制 bundle + 模型下载 UI + release CI | ✓ 完成 |
 | v0.2e | sphkit 解析修复 + 代理停止时仍可看下载历史 + Scribe 品牌图标 | ✓ 完成 |
 | v0.3 | yt-dlp 集成（YouTube / B 站 / X / 抖音 等 1700+ 站点）+ Downloads 页 MediaSource 抽象 + 实时日志面板 + 自动转写 toggle | ✓ 完成 |
-| v0.4 | Apple notarization + Intel mac / Windows binaries；Settings 代理 / 下载 tab 接入；可选 Whisper 量化模型 | ⏳ |
+| v0.4 | Dashboard 一键安装 / 卸载 CA 证书；Settings 代理 + 下载 tab 实质化（host / port / 下载目录均可改）；Whisper 量化模型 (medium-q5_0 / large-v3-q5_0)；Intel mac + Windows binaries | ✓ 完成 |
+| v0.5 | Apple notarization（需要 Developer ID）；MaxRunning 可配置；Linux binary | ⏳ |
 
 ## License
 

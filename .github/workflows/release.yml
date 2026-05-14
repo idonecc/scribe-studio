@@ -8,16 +8,27 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Version tag to build (e.g. v0.2.0)"
+        description: "Version tag to build (e.g. v0.4.0)"
         required: true
-        default: "v0.2.0-rc1"
+        default: "v0.4.0-rc1"
 
 permissions:
   contents: write
 
 jobs:
+  # macOS matrix: arm64 (Apple Silicon, macos-14) + amd64 (Intel, macos-13).
+  # Each job ships its own arch-specific DMG; the upload step tags artifacts
+  # by arch so the publish step can attach both files to one GitHub release.
   macos:
-    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+          - runner: macos-13
+            arch: amd64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -79,7 +90,7 @@ jobs:
         run: |
           set -euxo pipefail
           app_path="build/bin/scribe-studio.app"
-          dmg_name="scribe-${{ steps.meta.outputs.tag }}-darwin-arm64.dmg"
+          dmg_name="scribe-${{ steps.meta.outputs.tag }}-darwin-${{ matrix.arch }}.dmg"
           staging=$(mktemp -d)
           cp -R "$app_path" "$staging/"
           ln -s /Applications "$staging/Applications"
@@ -93,10 +104,13 @@ jobs:
       - name: Upload DMG as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: scribe-darwin-arm64-${{ steps.meta.outputs.tag }}
+          name: scribe-darwin-${{ matrix.arch }}-${{ steps.meta.outputs.tag }}
           path: ${{ env.DMG_PATH }}
 
-      # --- publish to public release -----------------------------------
+      # Each matrix job uploads its own asset to the release; softprops
+      # creates the release on first run and appends to it on subsequent
+      # ones (idempotent per tag), so arm64 + amd64 jobs land in the
+      # same release without racing.
       - name: Publish GitHub release
         if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
@@ -112,5 +126,107 @@ jobs:
 
                 xattr -dr com.apple.quarantine /Applications/Scribe.app
 
+            Pick the DMG that matches your Mac:
+              - darwin-arm64: Apple Silicon (M1 / M2 / M3 / M4)
+              - darwin-amd64: Intel
+              - windows-amd64: Windows 10/11 (x64)
+
             Whisper models are downloaded on first run from
-            Settings → 转写. Start with `base` (148 MB).
+            Settings, 转写 tab. Start with `base` (148 MB).
+
+  # Windows job: cross-platform build via Wails on a windows-latest runner.
+  # whisper-cli + ffmpeg + yt-dlp are fetched/built by fetch-bins.ps1 then
+  # bundled next to the .exe by build-release.ps1.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version tag
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
+
+      - name: Setup Node + pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache whisper.cpp build
+        uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/scribe-build
+          key: whisper-cpp-windows-amd64-${{ hashFiles('scripts/fetch-bins.ps1') }}
+          restore-keys: |
+            whisper-cpp-windows-amd64-
+
+      - name: Build static ffmpeg + whisper-cli + yt-dlp
+        shell: pwsh
+        run: ./scripts/fetch-bins.ps1 -Release
+
+      - name: Build Scribe .exe
+        shell: pwsh
+        run: ./scripts/build-release.ps1 -Version "${{ steps.meta.outputs.tag }}"
+
+      - name: Package zip
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.meta.outputs.tag }}"
+          $zipName = "scribe-$tag-windows-amd64.zip"
+          $exePath = "build/bin/scribe-studio.exe"
+          if (-not (Test-Path $exePath)) {
+            Write-Error "expected $exePath to exist after build"
+            exit 1
+          }
+          # Stage the exe + adjacent resources/bin into a dir so the user
+          # gets a zip that unzips into a single Scribe folder.
+          $staging = New-Item -ItemType Directory -Path "staging/Scribe"
+          Copy-Item $exePath -Destination $staging
+          if (Test-Path "build/bin/resources") {
+            Copy-Item -Recurse "build/bin/resources" -Destination $staging
+          }
+          Compress-Archive -Path "staging/Scribe" -DestinationPath $zipName -Force
+          Get-Item $zipName
+          "ZIP_PATH=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Upload zip as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scribe-windows-amd64-${{ steps.meta.outputs.tag }}
+          path: ${{ env.ZIP_PATH }}
+
+      - name: Publish GitHub release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          generate_release_notes: true
+          files: ${{ env.ZIP_PATH }}
