@@ -4,6 +4,7 @@ package llm
 import (
 	"context"
 	"strings"
+	"time"
 )
 
 type Message struct {
@@ -70,13 +71,43 @@ func (r *Registry) List() []string {
 	return names
 }
 
-func BuildRegistry(geminiKey, awsRegion, awsAccessKey, awsSecretKey, bedrockModel string) *Registry {
+// RegistryConfig collects every credential / model / proxy knob the
+// registry needs. Using a struct rather than a long positional arg
+// list keeps adding new providers cheap.
+type RegistryConfig struct {
+	GeminiKey   string
+	GeminiModel string
+	GeminiProxy string
+
+	BedrockRegion string
+	BedrockAccess string
+	BedrockSecret string
+	BedrockModel  string
+	BedrockProxy  string
+}
+
+// BuildRegistry registers each provider that has the credentials it
+// needs. Providers carry their per-instance proxy so a Bedrock user
+// in the US and a Gemini user behind a Clash proxy can coexist in
+// the same registry without leaking configuration across calls.
+func BuildRegistry(c RegistryConfig) *Registry {
 	reg := NewRegistry()
-	if strings.TrimSpace(geminiKey) != "" {
-		reg.Register("gemini", NewGeminiChat(geminiKey))
+	if strings.TrimSpace(c.GeminiKey) != "" {
+		g := NewGeminiChat(c.GeminiKey)
+		if m := strings.TrimSpace(c.GeminiModel); m != "" {
+			g.Model = m
+		}
+		if hc, err := BuildHTTPClient(c.GeminiProxy, 5*time.Minute); err == nil {
+			g.HTTP = hc
+		}
+		reg.Register("gemini", g)
 	}
-	if strings.TrimSpace(awsRegion) != "" && strings.TrimSpace(awsAccessKey) != "" && strings.TrimSpace(awsSecretKey) != "" {
-		reg.Register("bedrock", NewBedrockChat(awsRegion, awsAccessKey, awsSecretKey, bedrockModel))
+	if strings.TrimSpace(c.BedrockRegion) != "" && strings.TrimSpace(c.BedrockAccess) != "" && strings.TrimSpace(c.BedrockSecret) != "" {
+		b := NewBedrockChat(c.BedrockRegion, c.BedrockAccess, c.BedrockSecret, c.BedrockModel)
+		if hc, err := BuildHTTPClient(c.BedrockProxy, 5*time.Minute); err == nil {
+			b.HTTP = hc
+		}
+		reg.Register("bedrock", b)
 	}
 	reg.Register("mock", NewMockProvider())
 	return reg

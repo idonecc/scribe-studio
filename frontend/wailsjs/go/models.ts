@@ -1,9 +1,182 @@
+export namespace external {
+	
+	export class AddRequest {
+	    url: string;
+	    format?: string;
+	    formatHint?: string;
+	    cookieFile?: string;
+	    subLangs?: string[];
+	    title?: string;
+	    site?: string;
+	    duration?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AddRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.url = source["url"];
+	        this.format = source["format"];
+	        this.formatHint = source["formatHint"];
+	        this.cookieFile = source["cookieFile"];
+	        this.subLangs = source["subLangs"];
+	        this.title = source["title"];
+	        this.site = source["site"];
+	        this.duration = source["duration"];
+	    }
+	}
+	export class Format {
+	    id: string;
+	    label: string;
+	    height: number;
+	    fileSize: number;
+	    ext: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Format(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.label = source["label"];
+	        this.height = source["height"];
+	        this.fileSize = source["fileSize"];
+	        this.ext = source["ext"];
+	    }
+	}
+	export class ProbeResult {
+	    url: string;
+	    title: string;
+	    site: string;
+	    duration: number;
+	    thumbnail?: string;
+	    uploader?: string;
+	    formats: Format[];
+	    subLangs?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ProbeResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.url = source["url"];
+	        this.title = source["title"];
+	        this.site = source["site"];
+	        this.duration = source["duration"];
+	        this.thumbnail = source["thumbnail"];
+	        this.uploader = source["uploader"];
+	        this.formats = this.convertValues(source["formats"], Format);
+	        this.subLangs = source["subLangs"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Task {
+	    id: string;
+	    url: string;
+	    title: string;
+	    site: string;
+	    duration: number;
+	    thumbnail?: string;
+	    format: string;
+	    formatHint?: string;
+	    cookieFile?: string;
+	    subLangs?: string[];
+	    status: string;
+	    progress: number;
+	    progressMsg?: string;
+	    downloaded: number;
+	    totalBytes: number;
+	    speed: number;
+	    eta: number;
+	    path: string;
+	    filename: string;
+	    error?: string;
+	    createdAt: string;
+	    updatedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Task(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.url = source["url"];
+	        this.title = source["title"];
+	        this.site = source["site"];
+	        this.duration = source["duration"];
+	        this.thumbnail = source["thumbnail"];
+	        this.format = source["format"];
+	        this.formatHint = source["formatHint"];
+	        this.cookieFile = source["cookieFile"];
+	        this.subLangs = source["subLangs"];
+	        this.status = source["status"];
+	        this.progress = source["progress"];
+	        this.progressMsg = source["progressMsg"];
+	        this.downloaded = source["downloaded"];
+	        this.totalBytes = source["totalBytes"];
+	        this.speed = source["speed"];
+	        this.eta = source["eta"];
+	        this.path = source["path"];
+	        this.filename = source["filename"];
+	        this.error = source["error"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	    }
+	}
+
+}
+
+export namespace logbus {
+	
+	export class Entry {
+	    timestamp: string;
+	    level: string;
+	    source: string;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Entry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.timestamp = source["timestamp"];
+	        this.level = source["level"];
+	        this.source = source["source"];
+	        this.message = source["message"];
+	    }
+	}
+
+}
+
 export namespace pipeline {
 	
 	export class Job {
 	    taskID: string;
 	    title: string;
 	    videoPath: string;
+	    source?: string;
 	    stage: string;
 	    progress: number;
 	    progressMsg?: string;
@@ -26,6 +199,7 @@ export namespace pipeline {
 	        this.taskID = source["taskID"];
 	        this.title = source["title"];
 	        this.videoPath = source["videoPath"];
+	        this.source = source["source"];
 	        this.stage = source["stage"];
 	        this.progress = source["progress"];
 	        this.progressMsg = source["progressMsg"];
@@ -90,6 +264,7 @@ export namespace proofread {
 	    accessKey: string;
 	    secretKey: string;
 	    model: string;
+	    proxyURL?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new BedrockSettings(source);
@@ -101,11 +276,13 @@ export namespace proofread {
 	        this.accessKey = source["accessKey"];
 	        this.secretKey = source["secretKey"];
 	        this.model = source["model"];
+	        this.proxyURL = source["proxyURL"];
 	    }
 	}
 	export class GeminiSettings {
 	    apiKey: string;
 	    model: string;
+	    proxyURL?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new GeminiSettings(source);
@@ -115,6 +292,7 @@ export namespace proofread {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.apiKey = source["apiKey"];
 	        this.model = source["model"];
+	        this.proxyURL = source["proxyURL"];
 	    }
 	}
 	export class AISettings {

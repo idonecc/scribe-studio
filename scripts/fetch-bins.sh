@@ -65,9 +65,10 @@ if [[ "$mode" == "dev" ]]; then
   }
   install_if_missing ffmpeg ffmpeg
   install_if_missing whisper-cpp whisper-cli
+  install_if_missing yt-dlp yt-dlp
 
   mkdir -p resources/bin
-  for tool in ffmpeg whisper-cli; do
+  for tool in ffmpeg whisper-cli yt-dlp; do
     target="resources/bin/$tool"
     src="$(command -v "$tool")"
     if [[ -L "$target" && "$(readlink "$target")" == "$src" ]]; then
@@ -137,8 +138,22 @@ else
   echo "[fetch-bins] whisper-cli -> $bin_dir/whisper-cli"
 fi
 
+# ---- yt-dlp (official PyInstaller standalone) ----------------------
+# yt-dlp ships a one-file macOS binary that already bundles a Python
+# interpreter, so we can drop it next to ffmpeg without forcing users
+# to install Python. The same binary works on both arm64 and x86_64.
+if [[ -x "$bin_dir/yt-dlp" ]]; then
+  echo "[fetch-bins] yt-dlp already in $bin_dir; skipping"
+else
+  echo "[fetch-bins] downloading yt-dlp (official macOS standalone)"
+  curl -fsSL -o "$bin_dir/yt-dlp" \
+    "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
+  chmod +x "$bin_dir/yt-dlp"
+  echo "[fetch-bins] yt-dlp -> $bin_dir/yt-dlp"
+fi
+
 # ---- ad-hoc codesign so Gatekeeper accepts --------------------------
-for tool in ffmpeg whisper-cli; do
+for tool in ffmpeg whisper-cli yt-dlp; do
   codesign --force --sign - "$bin_dir/$tool"
 done
 

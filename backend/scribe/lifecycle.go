@@ -2,6 +2,7 @@
 package scribe
 
 import (
+	"github.com/autogame-17/scribe-studio/backend/scribe/logbus"
 	"wx_channel/pkg/sphkit"
 )
 
@@ -25,11 +26,18 @@ func (a *App) StartProxy() error {
 	if a.kit == nil {
 		kit, err := sphkit.New(BuildVersion, BuildMode)
 		if err != nil {
+			logbus.Error("proxy", "init: %v", err)
 			return err
 		}
 		a.kit = kit
 	}
-	return a.kit.Start()
+	if err := a.kit.Start(); err != nil {
+		logbus.Error("proxy", "start: %v", err)
+		return err
+	}
+	s := a.kit.Status()
+	logbus.Info("proxy", "started — interceptor %s, api %s", s.InterceptorAddr, s.APIAddr)
+	return nil
 }
 
 // StopProxy gracefully shuts the proxy down. Safe to call when not running.
@@ -40,7 +48,12 @@ func (a *App) StopProxy() error {
 	if a.kit == nil {
 		return nil
 	}
-	return a.kit.Stop()
+	if err := a.kit.Stop(); err != nil {
+		logbus.Error("proxy", "stop: %v", err)
+		return err
+	}
+	logbus.Info("proxy", "stopped")
+	return nil
 }
 
 // GetProxyStatus is what the dashboard polls and also what we emit via

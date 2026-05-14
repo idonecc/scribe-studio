@@ -10,6 +10,18 @@ export function AcceptNewTerm(arg1, arg2) {
   return window['go']['scribe']['App']['AcceptNewTerm'](arg1, arg2);
 }
 
+export function AddExternalURL(arg1) {
+  return window['go']['scribe']['App']['AddExternalURL'](arg1);
+}
+
+export function CancelExternal(arg1) {
+  return window['go']['scribe']['App']['CancelExternal'](arg1);
+}
+
+export function ClearLogs() {
+  return window['go']['scribe']['App']['ClearLogs']();
+}
+
 export function ClearProofreadCache() {
   return window['go']['scribe']['App']['ClearProofreadCache']();
 }
@@ -54,8 +66,16 @@ export function GetVersion() {
   return window['go']['scribe']['App']['GetVersion']();
 }
 
+export function ListExternalTasks() {
+  return window['go']['scribe']['App']['ListExternalTasks']();
+}
+
 export function ListGlossary(arg1) {
   return window['go']['scribe']['App']['ListGlossary'](arg1);
+}
+
+export function ListLogs(arg1) {
+  return window['go']['scribe']['App']['ListLogs'](arg1);
 }
 
 export function ListModels() {
@@ -82,6 +102,18 @@ export function RejectFix(arg1, arg2) {
   return window['go']['scribe']['App']['RejectFix'](arg1, arg2);
 }
 
+export function RemoveExternal(arg1) {
+  return window['go']['scribe']['App']['RemoveExternal'](arg1);
+}
+
+export function ResolveURL(arg1, arg2) {
+  return window['go']['scribe']['App']['ResolveURL'](arg1, arg2);
+}
+
+export function RetryExternal(arg1) {
+  return window['go']['scribe']['App']['RetryExternal'](arg1);
+}
+
 export function RetryTranscribe(arg1) {
   return window['go']['scribe']['App']['RetryTranscribe'](arg1);
 }
@@ -106,8 +138,8 @@ export function StopProxy() {
   return window['go']['scribe']['App']['StopProxy']();
 }
 
-export function TestAIConnection() {
-  return window['go']['scribe']['App']['TestAIConnection']();
+export function TestAIConnection(arg1) {
+  return window['go']['scribe']['App']['TestAIConnection'](arg1);
 }
 
 export function UpsertGlossary(arg1) {

@@ -26,6 +26,11 @@ type AISettings struct {
 type GeminiSettings struct {
 	APIKey string `json:"apiKey"`
 	Model  string `json:"model"` // e.g. "gemini-2.5-pro"
+	// ProxyURL routes the upstream HTTPS call through a local
+	// forwarder. Accepts http://, https://, socks5://, socks5h://.
+	// Empty means direct. Indispensable for users in regions where
+	// generativelanguage.googleapis.com is blocked.
+	ProxyURL string `json:"proxyURL,omitempty"`
 }
 
 type BedrockSettings struct {
@@ -33,6 +38,7 @@ type BedrockSettings struct {
 	AccessKey string `json:"accessKey"`
 	SecretKey string `json:"secretKey"`
 	Model     string `json:"model"` // e.g. anthropic.claude-sonnet-4-5-20250929-v1:0
+	ProxyURL  string `json:"proxyURL,omitempty"`
 }
 
 // SettingsStore owns the persisted settings + the live provider
@@ -127,6 +133,19 @@ func (s *SettingsStore) ActiveProvider() llm.Provider {
 	return p
 }
 
+// EphemeralProvider builds (but doesn't persist) a Provider from the
+// supplied settings — used by the Settings UI's "测试连通" button so
+// the user can validate credentials before clicking 保存. Returns
+// nil for Provider=="none" or missing credentials.
+func EphemeralProvider(v AISettings) llm.Provider {
+	reg := buildRegistry(v)
+	if reg == nil || v.Provider == "none" {
+		return nil
+	}
+	p, _ := reg.Get(v.Provider)
+	return p
+}
+
 // AvailableProviders reports which providers currently have credentials.
 // Useful for the Settings UI to grey out unconfigured entries.
 func (s *SettingsStore) AvailableProviders() []string {
@@ -142,11 +161,16 @@ func (s *SettingsStore) AvailableProviders() []string {
 // credentials filled in. Always includes mock so the UI has at least
 // one selectable option for testing.
 func buildRegistry(s AISettings) *llm.Registry {
-	return llm.BuildRegistry(
-		s.Gemini.APIKey,
-		s.Bedrock.Region, s.Bedrock.AccessKey, s.Bedrock.SecretKey,
-		s.Bedrock.Model,
-	)
+	return llm.BuildRegistry(llm.RegistryConfig{
+		GeminiKey:      s.Gemini.APIKey,
+		GeminiModel:    s.Gemini.Model,
+		GeminiProxy:    s.Gemini.ProxyURL,
+		BedrockRegion:  s.Bedrock.Region,
+		BedrockAccess:  s.Bedrock.AccessKey,
+		BedrockSecret:  s.Bedrock.SecretKey,
+		BedrockModel:   s.Bedrock.Model,
+		BedrockProxy:   s.Bedrock.ProxyURL,
+	})
 }
 
 // NotConfigured is returned by callers when the user picked "none"

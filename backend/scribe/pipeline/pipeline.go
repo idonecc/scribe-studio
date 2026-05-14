@@ -15,6 +15,7 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"github.com/autogame-17/scribe-studio/backend/scribe/logbus"
 	"github.com/autogame-17/scribe-studio/backend/scribe/media"
 	"github.com/autogame-17/scribe-studio/backend/scribe/proofread"
 	screbuntime "github.com/autogame-17/scribe-studio/backend/scribe/runtime"
@@ -34,6 +35,20 @@ const (
 	StageFailed       Stage = "failed"
 )
 
+// Source identifies where the original video came from so Retry and
+// the watcher know where to look for fresh metadata.
+type Source string
+
+const (
+	// SourceWxChannel covers everything that came through the
+	// wx_channel MITM proxy (i.e. sphkit/gopeed BoltDB tasks).
+	SourceWxChannel Source = "wx_channel"
+	// SourceExternal covers yt-dlp-driven downloads (YouTube,
+	// Bilibili, etc.). VideoPath is authoritative — there's no
+	// sphkit to re-hydrate from.
+	SourceExternal Source = "external"
+)
+
 // Job is the persisted record tracked per download. It's what the UI
 // receives via the "transcribe:job" event and what ListTranscripts
 // returns.
@@ -41,6 +56,10 @@ type Job struct {
 	TaskID         string  `json:"taskID"`
 	Title          string  `json:"title"`
 	VideoPath      string  `json:"videoPath"`
+	// Source is empty for legacy records — Retry treats those as
+	// wx_channel for backwards compatibility with state files
+	// written before the multi-source split.
+	Source         Source  `json:"source,omitempty"`
 	Stage          Stage   `json:"stage"`
 	Progress       float64 `json:"progress"` // 0..1, -1 if indeterminate
 	ProgressMsg    string  `json:"progressMsg,omitempty"`
@@ -150,17 +169,61 @@ func (p *Pipeline) ListJobsMap() map[string]Job {
 	return out
 }
 
-// Retry forces a re-transcribe for a known task. We always refresh
-// VideoPath/Title from sphkit before enqueueing so that stale or
-// previously-broken records (e.g. jobs persisted before a parser fix)
-// pick up the correct path instead of replaying the same failure.
+// Retry forces a re-transcribe for a known task. For wx_channel
+// jobs we re-fetch from sphkit (so records persisted by an older
+// parser auto-correct). External jobs already carry their canonical
+// VideoPath/Title from the yt-dlp manager — we just reset the Stage
+// and re-queue.
 func (p *Pipeline) Retry(taskID string) {
-	p.hydrateJob(taskID)
+	if existing, ok := p.state.Get(taskID); ok && existing.Source == SourceExternal {
+		existing.Stage = StagePending
+		existing.Error = ""
+		existing.Progress = 0
+		existing.ProgressMsg = ""
+		existing.UpdatedAt = nowISO()
+		p.upsertJob(existing)
+	} else {
+		p.hydrateJob(taskID)
+	}
+	p.enqueue(taskID)
+}
+
+// EnqueueExternal registers a Job for an external (yt-dlp) download
+// that just finished, then schedules it for transcribe. Called from
+// the external Manager's completion callback. Safe to call multiple
+// times for the same taskID (idempotent — second call just bumps
+// timestamps and re-queues if not already in-flight).
+func (p *Pipeline) EnqueueExternal(taskID, title, videoPath string) {
+	if taskID == "" || videoPath == "" {
+		return
+	}
+	job := Job{
+		TaskID:    taskID,
+		Title:     title,
+		VideoPath: videoPath,
+		Source:    SourceExternal,
+		Stage:     StagePending,
+		CreatedAt: nowISO(),
+		UpdatedAt: nowISO(),
+	}
+	if existing, ok := p.state.Get(taskID); ok {
+		// Preserve existing CreatedAt + Retries; refresh path/title.
+		job.CreatedAt = existing.CreatedAt
+		job.Retries = existing.Retries
+	}
+	p.state.MarkSeen(taskID)
+	p.upsertJob(job)
+	p.enqueue(taskID)
+}
+
+// enqueue pushes a taskID onto the worker channel. If the channel is
+// full we fall back to a goroutine that blocks until either a slot
+// opens or the pipeline shuts down, so a flurry of retries can't
+// silently drop work.
+func (p *Pipeline) enqueue(taskID string) {
 	select {
 	case p.jobs <- taskID:
 	default:
-		// queue full; try a blocking send with timeout to avoid
-		// silently dropping the retry
 		go func() {
 			select {
 			case p.jobs <- taskID:
@@ -207,6 +270,7 @@ func (p *Pipeline) hydrateJob(taskID string) {
 			TaskID:    t.ID,
 			Title:     t.Title,
 			VideoPath: videoPath,
+			Source:    SourceWxChannel,
 			Stage:     StagePending,
 			CreatedAt: nowISO(),
 			UpdatedAt: nowISO(),
@@ -277,6 +341,7 @@ func (p *Pipeline) scan(initial bool) {
 			TaskID:    t.ID,
 			Title:     t.Title,
 			VideoPath: filepath.Join(t.Path, t.Filename),
+			Source:    SourceWxChannel,
 			Stage:     StagePending,
 			CreatedAt: nowISO(),
 			UpdatedAt: nowISO(),
@@ -297,9 +362,15 @@ func (p *Pipeline) scan(initial bool) {
 // touch Title and VideoPath — the Stage/Error/Progress are left alone
 // so a previously-failed job stays failed (with the corrected metadata
 // surfaced in the UI) until the user clicks Retry.
+//
+// External (yt-dlp) jobs are off-limits here: their metadata comes
+// from the external manager, not sphkit.
 func (p *Pipeline) repairJobMetadata(t sphkit.TaskSummary) {
 	job, ok := p.state.Get(t.ID)
 	if !ok {
+		return
+	}
+	if job.Source == SourceExternal {
 		return
 	}
 	newPath := filepath.Join(t.Path, t.Filename)
@@ -349,11 +420,14 @@ func (p *Pipeline) processOne(taskID string) {
 	if !ok {
 		return
 	}
+	logbus.Info("pipeline", "transcribe start: %s (%s)", abbrevTitle(job.Title, job.TaskID), job.Source)
+	started := time.Now()
 	if err := p.runJob(&job); err != nil {
 		job.Stage = StageFailed
 		job.Error = err.Error()
 		job.UpdatedAt = nowISO()
 		p.upsertJob(job)
+		logbus.Error("pipeline", "transcribe failed: %s — %v", abbrevTitle(job.Title, job.TaskID), err)
 		return
 	}
 	job.Stage = StageDone
@@ -361,6 +435,22 @@ func (p *Pipeline) processOne(taskID string) {
 	job.Error = ""
 	job.UpdatedAt = nowISO()
 	p.upsertJob(job)
+	logbus.Info("pipeline", "transcribe done in %s: %s", time.Since(started).Round(time.Millisecond), abbrevTitle(job.Title, job.TaskID))
+}
+
+// abbrevTitle returns a short, log-friendly identifier — the first
+// 48 chars of the title, falling back to the taskID when title is
+// empty. Keeps log lines from blowing up with full Chinese titles.
+func abbrevTitle(title, taskID string) string {
+	t := strings.TrimSpace(title)
+	if t == "" {
+		return taskID
+	}
+	runes := []rune(t)
+	if len(runes) > 48 {
+		t = string(runes[:48]) + "…"
+	}
+	return t
 }
 
 func (p *Pipeline) runJob(job *Job) error {

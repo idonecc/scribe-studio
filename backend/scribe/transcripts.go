@@ -6,13 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"github.com/autogame-17/scribe-studio/backend/scribe/logbus"
 	"github.com/autogame-17/scribe-studio/backend/scribe/models"
 	"github.com/autogame-17/scribe-studio/backend/scribe/pipeline"
 	"github.com/autogame-17/scribe-studio/backend/scribe/proofread"
@@ -371,7 +371,7 @@ func (a *App) DownloadModel(key string) error {
 		payload := map[string]any{"key": spec.Key}
 		if err != nil {
 			payload["error"] = err.Error()
-			log.Printf("scribe: model download failed: %v", err)
+			logbus.Error("models", "download failed: %v", err)
 		}
 		runtime.EventsEmit(ctx, "model:done", payload)
 	}()

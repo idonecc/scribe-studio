@@ -24,6 +24,8 @@ import {
   ClearProofreadCache,
   ListModels,
   DownloadModel,
+  GetTranscribeSettings,
+  SetAutoTranscribe,
 } from '../../wailsjs/go/scribe/App'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 import type { proofread, scribe } from '../../wailsjs/go/models'
@@ -158,12 +160,16 @@ function AITab() {
     setTesting(true)
     setTestOK(null)
     try {
-      const reply = await TestAIConnection()
+      // Pass the live form state — letting the user verify a key /
+      // proxy combination before persisting saves them a "save then
+      // test then realise it's wrong" round trip.
+      const reply = await TestAIConnection(settings!)
       setTestOK({ ok: true, msg: reply })
       toast.success('AI 连通', { description: reply })
     } catch (e) {
-      setTestOK({ ok: false, msg: String(e) })
-      toast.error('测试失败：' + String(e))
+      const msg = String(e).replace(/^Error: /, '')
+      setTestOK({ ok: false, msg })
+      toast.error('测试失败：' + msg)
     } finally {
       setTesting(false)
     }
@@ -239,6 +245,13 @@ function AITab() {
                 className={inputCls + ' font-mono text-xs'}
               />
             </Field>
+            <ProxyField
+              value={settings.gemini.proxyURL ?? ''}
+              onChange={(v) =>
+                patch({ gemini: { ...settings.gemini, proxyURL: v } })
+              }
+              hint="国内访问 generativelanguage.googleapis.com 一般要走 VPN。常见值：http://127.0.0.1:7890（Clash）或 socks5://127.0.0.1:7891"
+            />
           </CardContent>
         </Card>
       )}
@@ -289,6 +302,13 @@ function AITab() {
                 className={inputCls + ' font-mono text-xs'}
               />
             </Field>
+            <ProxyField
+              value={settings.bedrock.proxyURL ?? ''}
+              onChange={(v) =>
+                patch({ bedrock: { ...settings.bedrock, proxyURL: v } })
+              }
+              hint="一般 AWS 不需要代理；只有当 bedrock-runtime 域名被网络限制时再填。"
+            />
           </CardContent>
         </Card>
       )}
@@ -343,6 +363,37 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       </span>
       {children}
     </label>
+  )
+}
+
+// ProxyField renders the "HTTP/SOCKS5 代理" input common to every
+// provider that needs to reach an upstream HTTPS host. The hint
+// surfaces region-specific advice (e.g. Clash on 7890 for Chinese
+// Gemini users) without us having to invent a settings explorer.
+function ProxyField({
+  value,
+  onChange,
+  hint,
+}: {
+  value: string
+  onChange: (v: string) => void
+  hint?: string
+}) {
+  return (
+    <div className="block">
+      <span className="mb-1 block text-[11px] uppercase tracking-wider text-muted-foreground">
+        代理 URL
+      </span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="留空表示直连。示例：http://127.0.0.1:7890 或 socks5://127.0.0.1:7891"
+        className={inputCls + ' font-mono text-xs'}
+      />
+      {hint && (
+        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground/80">{hint}</p>
+      )}
+    </div>
   )
 }
 
@@ -474,15 +525,81 @@ function TranscribeTab() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>自动转写</CardTitle>
-          <CardDescription>下载完成后是否自动转写。该开关也可以在 Dashboard 右上角。</CardDescription>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          当前 UI 待补——SetAutoTranscribe / GetTranscribeSettings 绑定已就绪，只差 toggle 组件。
-        </CardContent>
-      </Card>
+      <AutoTranscribeCard />
     </div>
+  )
+}
+
+// AutoTranscribeCard renders the watcher's auto-enqueue toggle. We
+// fetch the current value from the backend on mount (rather than
+// tracking it locally) so the UI stays in sync if another window
+// flips the bit via Wails — and so a refresh / re-mount doesn't
+// silently flip back to the React default.
+function AutoTranscribeCard() {
+  const [enabled, setEnabled] = useState<boolean | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    GetTranscribeSettings()
+      .then((s) => setEnabled(!!s.autoEnabled))
+      .catch(() => setEnabled(false))
+  }, [])
+
+  async function toggle() {
+    if (enabled === null) return
+    const next = !enabled
+    setBusy(true)
+    setEnabled(next)
+    try {
+      await SetAutoTranscribe(next)
+      toast.success(next ? '已开启自动转写' : '已关闭自动转写')
+    } catch (e) {
+      // Roll back on failure so the UI doesn't claim a state the
+      // pipeline didn't accept.
+      setEnabled(!next)
+      toast.error(String(e).replace(/^Error: /, ''))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>自动转写</CardTitle>
+        <CardDescription>
+          下载完成后是否自动跑 Whisper。关掉只影响新下载——已经在跑的不受影响，手动 Retry 也始终可用。
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-border/40 bg-card/40 px-4 py-3">
+          <div className="min-w-0">
+            <div className="text-sm font-medium">下载完成后自动转写</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              {enabled === null ? '读取中…' : enabled ? '开启中：每个完成的下载会自动入队' : '已关闭：需要手动点「转写」'}
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled === true}
+            disabled={busy || enabled === null}
+            onClick={toggle}
+            className={cn(
+              'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors',
+              'focus:outline-none focus:ring-2 focus:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60',
+              enabled ? 'bg-emerald-500' : 'bg-muted'
+            )}
+          >
+            <span
+              className={cn(
+                'inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform',
+                enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'
+              )}
+            />
+          </button>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
