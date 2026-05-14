@@ -149,13 +149,12 @@ func (p *Pipeline) ListJobsMap() map[string]Job {
 	return out
 }
 
-// Retry forces a re-transcribe for a known task. If no job exists yet
-// (e.g. the task existed before Scribe started watching, or was
-// skipped on first-ever scan), we hydrate one from sphkit.
+// Retry forces a re-transcribe for a known task. We always refresh
+// VideoPath/Title from sphkit before enqueueing so that stale or
+// previously-broken records (e.g. jobs persisted before a parser fix)
+// pick up the correct path instead of replaying the same failure.
 func (p *Pipeline) Retry(taskID string) {
-	if _, ok := p.state.Get(taskID); !ok {
-		p.hydrateJob(taskID)
-	}
+	p.hydrateJob(taskID)
 	select {
 	case p.jobs <- taskID:
 	default:
@@ -170,8 +169,10 @@ func (p *Pipeline) Retry(taskID string) {
 	}
 }
 
-// hydrateJob looks up the task in sphkit and creates a pending Job
-// entry so processOne has something to act on.
+// hydrateJob looks up the task in sphkit and creates or refreshes the
+// Job entry so processOne has up-to-date path/title to act on. If the
+// task can't be found (e.g. proxy stopped, task purged) any existing
+// Job is left untouched.
 func (p *Pipeline) hydrateJob(taskID string) {
 	kit := p.kitFn()
 	if kit == nil {
@@ -189,10 +190,22 @@ func (p *Pipeline) hydrateJob(taskID string) {
 			continue
 		}
 		p.state.MarkSeen(t.ID)
+		videoPath := filepath.Join(t.Path, t.Filename)
+		if existing, ok := p.state.Get(taskID); ok {
+			existing.Title = t.Title
+			existing.VideoPath = videoPath
+			existing.Stage = StagePending
+			existing.Error = ""
+			existing.Progress = 0
+			existing.ProgressMsg = ""
+			existing.UpdatedAt = nowISO()
+			p.upsertJob(existing)
+			return
+		}
 		p.upsertJob(Job{
 			TaskID:    t.ID,
 			Title:     t.Title,
-			VideoPath: filepath.Join(t.Path, t.Filename),
+			VideoPath: videoPath,
 			Stage:     StagePending,
 			CreatedAt: nowISO(),
 			UpdatedAt: nowISO(),
@@ -221,6 +234,14 @@ func (p *Pipeline) runWatcher() {
 // (empty state) it ingests every success without queuing them — the
 // product decision is "only auto-transcribe NEW downloads, not old
 // ones". Subsequent cycles enqueue anything freshly successful.
+//
+// scan also acts as a self-healer: any already-known Job whose Title
+// or VideoPath drifted from sphkit's source of truth gets refreshed
+// in-place. This recovers records that were persisted while an earlier
+// version of the JSON parser produced empty values, without forcing
+// the user to manually click Retry just to fix the displayed title.
+// The repair only rewrites metadata — it does NOT auto-enqueue a
+// re-transcribe, because the original file may legitimately be gone.
 func (p *Pipeline) scan(initial bool) {
 	kit := p.kitFn()
 	if kit == nil {
@@ -232,6 +253,8 @@ func (p *Pipeline) scan(initial bool) {
 	}
 	firstEver := initial && !p.state.HasEverScanned()
 	for _, t := range page.Tasks {
+		p.repairJobMetadata(t)
+
 		if !isSuccess(t.Status) {
 			continue
 		}
@@ -266,6 +289,33 @@ func (p *Pipeline) scan(initial bool) {
 		p.state.MarkScanned()
 	}
 	_ = p.state.Save()
+}
+
+// repairJobMetadata syncs the persisted Job's display fields with
+// sphkit's current task data, if a Job exists for this taskID. We only
+// touch Title and VideoPath — the Stage/Error/Progress are left alone
+// so a previously-failed job stays failed (with the corrected metadata
+// surfaced in the UI) until the user clicks Retry.
+func (p *Pipeline) repairJobMetadata(t sphkit.TaskSummary) {
+	job, ok := p.state.Get(t.ID)
+	if !ok {
+		return
+	}
+	newPath := filepath.Join(t.Path, t.Filename)
+	changed := false
+	if t.Title != "" && job.Title != t.Title {
+		job.Title = t.Title
+		changed = true
+	}
+	if newPath != "" && newPath != string(filepath.Separator) && job.VideoPath != newPath {
+		job.VideoPath = newPath
+		changed = true
+	}
+	if !changed {
+		return
+	}
+	job.UpdatedAt = nowISO()
+	p.upsertJob(job)
 }
 
 func (p *Pipeline) runWorker() {

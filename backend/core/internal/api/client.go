@@ -182,7 +182,13 @@ func (c *APIClient) Start() error {
 
 func (c *APIClient) Stop() error {
 	if c.downloader != nil {
-		c.downloader.Pause(nil)
+		// Close (rather than just Pause) so the underlying BoltDB file
+		// lock is released. Otherwise read-only consumers (e.g. the
+		// Wails UI listing persisted tasks while the proxy is stopped)
+		// can't open the same gopeed.db, and a subsequent restart that
+		// tries to construct a fresh Downloader would also conflict on
+		// the lock.
+		_ = c.downloader.Close()
 	}
 	if c.channels != nil {
 		c.channels.Stop()

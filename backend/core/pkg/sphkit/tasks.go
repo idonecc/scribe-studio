@@ -6,7 +6,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
+	"sort"
 	"time"
+
+	"go.etcd.io/bbolt"
 
 	"wx_channel/internal/api"
 )
@@ -59,21 +63,23 @@ func (i *Instance) GetConfig() Config {
 }
 
 // rawTask mirrors the subset of wx_channel's /api/task/list entry we need.
+// The gopeed Task JSON shape nests resource/opts/labels under "meta":
+//
+//	{ "meta": { "req": { "labels": {...} }, "res": { "size": N }, "opts": { "name": "...", "path": "..." } }, ... }
 type rawTask struct {
 	ID   string `json:"id"`
 	Meta struct {
-		Labels struct {
-			Title string `json:"title"`
-			Spec  string `json:"spec"`
-		} `json:"labels"`
+		Req struct {
+			Labels map[string]string `json:"labels"`
+		} `json:"req"`
+		Res struct {
+			Size int64 `json:"size"`
+		} `json:"res"`
+		Opts struct {
+			Name string `json:"name"`
+			Path string `json:"path"`
+		} `json:"opts"`
 	} `json:"meta"`
-	Res struct {
-		Size int64 `json:"size"`
-	} `json:"res"`
-	Opts struct {
-		Name string `json:"name"`
-		Path string `json:"path"`
-	} `json:"opts"`
 	Status   string `json:"status"`
 	Progress struct {
 		Downloaded int64 `json:"downloaded"`
@@ -96,16 +102,25 @@ type rawListResp struct {
 
 var httpClient = &http.Client{Timeout: 5 * time.Second}
 
-// ListTasks fetches the task list from the embedded API server over loopback
-// HTTP. That's simpler than reaching into the APIClient internals and keeps
-// our dependency surface on upstream minimal.
+// gopeed persists tasks in this bbolt bucket; keep in sync with
+// pkg/gopeed/pkg/download.bucketTask.
+const boltTaskBucket = "task"
+
+// gopeed's BoltStorage hardcodes the filename; mirror it here.
+const boltDBFile = "gopeed.db"
+
+// ListTasks returns persisted download tasks. When the embedded proxy is
+// running we proxy through its HTTP API (single source of truth, includes
+// in-memory state like live speed). When the proxy is stopped we fall back
+// to reading the gopeed bbolt file directly so the UI can still show what
+// was previously downloaded — the user shouldn't have to start the proxy
+// just to inspect history.
 func (i *Instance) ListTasks(status string, page, pageSize int) (TaskListResult, error) {
 	i.mu.Lock()
 	apiSrv := i.apiSrv
+	rootDir := i.cfg.RootDir
 	i.mu.Unlock()
-	if apiSrv == nil {
-		return TaskListResult{}, fmt.Errorf("proxy is not running")
-	}
+
 	if status == "" {
 		status = "all"
 	}
@@ -115,12 +130,20 @@ func (i *Instance) ListTasks(status string, page, pageSize int) (TaskListResult,
 	if pageSize <= 0 {
 		pageSize = 30
 	}
+
+	if apiSrv != nil {
+		return listTasksViaAPI(apiSrv.Addr(), status, page, pageSize)
+	}
+	return listTasksFromBolt(rootDir, status, page, pageSize)
+}
+
+func listTasksViaAPI(addr, status string, page, pageSize int) (TaskListResult, error) {
 	q := url.Values{}
 	q.Set("status", status)
 	q.Set("page", fmt.Sprint(page))
 	q.Set("page_size", fmt.Sprint(pageSize))
 
-	endpoint := fmt.Sprintf("http://%s/api/task/list?%s", apiSrv.Addr(), q.Encode())
+	endpoint := fmt.Sprintf("http://%s/api/task/list?%s", addr, q.Encode())
 	resp, err := httpClient.Get(endpoint)
 	if err != nil {
 		return TaskListResult{}, fmt.Errorf("list tasks: %w", err)
@@ -145,19 +168,106 @@ func (i *Instance) ListTasks(status string, page, pageSize int) (TaskListResult,
 		PageSize: parsed.Data.PageSize,
 	}
 	for _, r := range parsed.Data.List {
-		out.Tasks = append(out.Tasks, TaskSummary{
-			ID:         r.ID,
-			Title:      r.Meta.Labels.Title,
-			Spec:       r.Meta.Labels.Spec,
-			Size:       r.Res.Size,
-			Downloaded: r.Progress.Downloaded,
-			Speed:      r.Progress.Speed,
-			Status:     r.Status,
-			Path:       r.Opts.Path,
-			Filename:   r.Opts.Name,
-			CreatedAt:  r.CreatedAt,
-			UpdatedAt:  r.UpdatedAt,
-		})
+		out.Tasks = append(out.Tasks, summaryFromRaw(r))
 	}
 	return out, nil
+}
+
+// listTasksFromBolt opens gopeed.db read-only and reconstructs the same
+// shape as the HTTP API. We replicate the API's sort/filter/paginate logic
+// rather than calling into the gopeed Downloader (which would require a
+// full Setup of the storage + background goroutines just to list).
+func listTasksFromBolt(rootDir, status string, page, pageSize int) (TaskListResult, error) {
+	if rootDir == "" {
+		return TaskListResult{}, nil
+	}
+	path := filepath.Join(rootDir, boltDBFile)
+	db, err := bbolt.Open(path, 0600, &bbolt.Options{
+		ReadOnly: true,
+		// Bail quickly if the proxy actually grabbed the lock between
+		// our nil-check and now; UI poll will retry on the next tick.
+		Timeout: 200 * time.Millisecond,
+	})
+	if err != nil {
+		// File doesn't exist yet (fresh install) or is briefly locked.
+		// Either way, "no tasks" is the right UX answer — surfacing the
+		// error would flag a useless red banner.
+		return TaskListResult{Page: page, PageSize: pageSize}, nil
+	}
+	defer db.Close()
+
+	var all []rawTask
+	err = db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(boltTaskBucket))
+		if b == nil {
+			return nil
+		}
+		return b.ForEach(func(_, v []byte) error {
+			var r rawTask
+			if err := json.Unmarshal(v, &r); err != nil {
+				// Skip malformed records rather than aborting the
+				// whole list — older gopeed versions or partial
+				// writes shouldn't kill the page.
+				return nil
+			}
+			all = append(all, r)
+			return nil
+		})
+	})
+	if err != nil {
+		return TaskListResult{}, fmt.Errorf("read bolt: %w", err)
+	}
+
+	// Status filter mirrors handleFetchTaskList's behavior: "all" or ""
+	// means no filtering, anything else is exact match on Status.
+	filtered := all
+	if status != "" && status != "all" {
+		filtered = filtered[:0]
+		for _, r := range all {
+			if r.Status == status {
+				filtered = append(filtered, r)
+			}
+		}
+	}
+
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].CreatedAt > filtered[j].CreatedAt
+	})
+
+	total := len(filtered)
+	start := (page - 1) * pageSize
+	if start > total {
+		start = total
+	}
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+
+	out := TaskListResult{
+		Tasks:    make([]TaskSummary, 0, end-start),
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	}
+	for _, r := range filtered[start:end] {
+		out.Tasks = append(out.Tasks, summaryFromRaw(r))
+	}
+	return out, nil
+}
+
+func summaryFromRaw(r rawTask) TaskSummary {
+	return TaskSummary{
+		ID:         r.ID,
+		Title:      r.Meta.Req.Labels["title"],
+		Spec:       r.Meta.Req.Labels["spec"],
+		Size:       r.Meta.Res.Size,
+		Downloaded: r.Progress.Downloaded,
+		Speed:      r.Progress.Speed,
+		Status:     r.Status,
+		Path:       r.Meta.Opts.Path,
+		Filename:   r.Meta.Opts.Name,
+		CreatedAt:  r.CreatedAt,
+		UpdatedAt:  r.UpdatedAt,
+	}
 }
