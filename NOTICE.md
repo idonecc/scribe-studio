@@ -4,19 +4,46 @@ Scribe stands on the shoulders of several open-source projects. This file
 lists the components that ship as source (vendored, embedded, or linked) and
 the runtime binaries the app shells out to.
 
+## Project-wide license: GPL-3.0-or-later
+
+The `scribe-studio` repository as a whole is licensed under
+**GPL-3.0-or-later** (see `LICENSE`). The Wails desktop binary statically
+links a vendored GPL-3.0 fork of `GopeedLab/gopeed` (under
+`backend/core/pkg/gopeed/`); per GPL-3.0 §5, the combined work must
+therefore be conveyed under GPL-3.0. Each third-party component listed
+below retains its own upstream license — those notices describe the
+license of those specific files in source form, while the redistributed
+binary as a whole is GPL-3.0.
+
+If you want to use parts of Scribe under terms other than GPL-3.0, see
+the "Commercial licensing" section of `LICENSE`.
+
 ## Vendored source
 
 ### ltaoo/wx_channels_download — `backend/core/`
 
 The entire WeChat Channels ingestion path — MITM proxy, page-injection
-scripts, download orchestration, gopeed fork — is vendored via `git subtree`
-from <https://github.com/ltaoo/wx_channels_download>. Upstream retains the
-**"Commons Clause" + MIT License** (see `backend/core/LICENSE`).
+scripts, download orchestration — is vendored via `git subtree` from
+<https://github.com/ltaoo/wx_channels_download>. The upstream files
+retain their **"Commons Clause" + MIT License** (see `backend/core/LICENSE`)
+as a notice describing the upstream-authored material. Note that this
+upstream notice describes the license of the individual files; once those
+files are linked together with GPL-3.0 components (gopeed, see below) into
+the Scribe binary, the combined work is conveyed as GPL-3.0 per the
+project-wide license above.
 
-Scribe adds a thin overlay at `backend/core/pkg/sphkit/` that re-exports
-Start / Stop / ListTasks in a form the Wails glue layer can call without
-crossing Go's internal-package barrier. No upstream internal code is
-modified.
+Scribe adds a thin overlay at `backend/core/pkg/sphkit/` (Scribe-original
+code, GPL-3.0-or-later) that re-exports Start / Stop / ListTasks in a form
+the Wails glue layer can call without crossing Go's internal-package
+barrier. No upstream internal code is modified.
+
+### GopeedLab/gopeed — `backend/core/pkg/gopeed/`
+
+A fork of <https://github.com/GopeedLab/gopeed> is vendored under
+`backend/core/pkg/gopeed/` and pulled in via the Go module `replace`
+directive in `backend/core/go.mod`. Upstream license: **GPL-3.0**
+(see `backend/core/pkg/gopeed/LICENSE`). This is the load-bearing
+copyleft dependency that drives the project-wide GPL-3.0 license.
 
 ## Runtime dependencies (binaries the app shells out to)
 

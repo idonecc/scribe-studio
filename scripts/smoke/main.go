@@ -1,5 +1,7 @@
 //go:build smoke
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // smoke test for sphkit: Start → probe → Stop, independent of the Wails UI.
 // Run with: go run -tags smoke ./scripts/smoke/main.go
 package main

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Package sphkit is a thin facade over wx_channel's internal packages. It
 // lives inside the wx_channel module so it can import wx_channel/internal/*;
 // external consumers (the Wails glue layer at backend/sph) import sphkit

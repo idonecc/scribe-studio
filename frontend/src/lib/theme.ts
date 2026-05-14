@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Theme management. applyStoredTheme() is invoked from main.tsx BEFORE React
 // renders so the first paint already matches the user's saved preference.
 

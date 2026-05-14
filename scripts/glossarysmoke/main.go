@@ -1,5 +1,7 @@
 //go:build glossarysmoke
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Sanity-check the glossary Load + Apply pipeline on a canned string
 // that mirrors the kinds of errors Whisper made on the real Agent
 // video. Confirms the seed entries fire and the hit offsets line up.

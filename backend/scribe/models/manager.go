@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Package models manages the ggml Whisper models on disk. They're too
 // big to bundle (base = 140 MB, medium = 1.5 GB), so we fetch on demand
 // into AppSupport/models/ and cache by filename.

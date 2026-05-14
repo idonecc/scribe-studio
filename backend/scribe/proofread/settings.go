@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Settings for AI providers. Persisted to AppSupport/Scribe/ai-settings.json
 // with mode 0600 so the keys don't leak to other processes. v0.2c keeps
 // secrets in a plain-text JSON under the user profile; a proper

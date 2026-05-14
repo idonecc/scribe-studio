@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Package proofread owns Scribe's glossary: the deterministic
 // replacement pass (what we can fix without asking an LLM) and the
 // persistence + CRUD that drives the UI Drawer.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { useLocation } from 'react-router-dom'
 import { Moon, Sun } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'

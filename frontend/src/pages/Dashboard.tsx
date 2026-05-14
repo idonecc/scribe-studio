@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { useEffect, useState } from 'react'
 import { Play, Square, ShieldCheck, ShieldAlert, FolderOpen, Copy } from 'lucide-react'
 import {

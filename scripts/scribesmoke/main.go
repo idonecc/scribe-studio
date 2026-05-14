@@ -1,5 +1,7 @@
 //go:build scribesmoke
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Verify backend/scribe/transcribe + media + runtime in isolation
 // from the Wails app. Runs against /tmp/scribe-test/sample.wav
 // prepared by the outer shell script.

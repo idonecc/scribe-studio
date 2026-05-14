@@ -1,5 +1,7 @@
 //go:build realsmoke
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Verify scribe's full pipeline on a real audio/video file:
 //   ffmpeg → whisper-cpp → parse → write SRT next to the video.
 // Bypasses sphkit so it works while the Wails app is running.

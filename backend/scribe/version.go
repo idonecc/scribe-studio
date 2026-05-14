@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 package scribe
 
 // VersionInfo surfaces the build identity to the About screen.

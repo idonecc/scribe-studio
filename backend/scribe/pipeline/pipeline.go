@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Package pipeline is the glue that turns a finished download into a
 // saved transcript. It runs one worker so local Whisper doesn't tank
 // the machine when a batch of videos finishes at once.

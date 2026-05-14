@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ExternalLink } from 'lucide-react'
 
@@ -24,7 +25,12 @@ export function AboutPage() {
               ltaoo/wx_channels_download
               <ExternalLink className="h-3 w-3" />
             </a>
-            （MIT + Commons Clause）。UI 脚手架对齐 autogame-17/prism。
+            （上游声明 MIT + Commons Clause）。UI 脚手架对齐 autogame-17/prism。
+          </p>
+          <p>
+            Scribe 整体以 <span className="font-mono text-foreground/80">GPL-3.0-or-later</span> 发行（因为静态链接了 GPL-3.0 的 GopeedLab/gopeed）。完整说明见仓库根目录的{' '}
+            <span className="font-mono text-foreground/80">LICENSE</span> 与{' '}
+            <span className="font-mono text-foreground/80">NOTICE.md</span>。本程序不提供任何担保；详见 GPL-3.0 第 15、16 节。
           </p>
         </CardContent>
       </Card>

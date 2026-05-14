@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Package runtime centralises filesystem + binary path resolution so the
 // transcribe/media/pipeline packages never hard-code absolute paths.
 package runtime

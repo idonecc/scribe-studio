@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 package proofread
 
 // Rough budgets for input chunk assembly. Tuned for Gemini / Claude's

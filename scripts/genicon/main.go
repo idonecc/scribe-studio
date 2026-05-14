@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Command genicon renders the Scribe app icon as a 1024x1024 PNG with the
 // same visual language as the sidebar header: a violet → fuchsia → pink
 // diagonal gradient on a rounded squircle, with six white "audio lines"

@@ -111,9 +111,17 @@ go run -tags realsmoke ./scripts/realsmoke/main.go path/to/video.mp4 base
 
 ## License
 
-MIT + Commons Clause（对齐上游 ltaoo/wx_channels_download）。详见 `LICENSE`。
+**GPL-3.0-or-later**。详见 [`LICENSE`](LICENSE)。
 
-用于个人 / 非商业内部用途完全合规；若后续打算 SaaS 化或付费分发，需与上游作者协商另外授权。
+为什么是 GPL：Wails 桌面二进制静态链接了 vendored 进来的 [GopeedLab/gopeed](https://github.com/GopeedLab/gopeed) fork（在 `backend/core/pkg/gopeed/`，GPL-3.0）。按 GPL-3.0 §5，combined work 必须以 GPL-3.0（或兼容许可证）整体发行——所以 scribe-studio 整仓都走 GPL-3.0-or-later。
+
+各第三方组件保留各自原始许可（见 [`NOTICE.md`](NOTICE.md)）。例如 `backend/core/` 下来自上游 `ltaoo/wx_channels_download` 的文件保留其 "Commons Clause" + MIT 上游声明（描述这些**单个文件**的授权），但合成进 Scribe 二进制后整体仍以 GPL-3.0 发行。
+
+### 商业许可（dual licensing）
+
+如果 GPL-3.0 的义务（衍生品源码公开等）与你的用途冲突——典型场景如闭源 SaaS、私有发行——`autogame-17` 作为 Scribe 原创部分的版权所有者，欢迎商谈另外的商业授权。注意：dual licensing 只能覆盖 Scribe 自有代码 + 已签署 CLA 的贡献者代码；vendored 的 GPL/MIT 第三方组件仍受其上游许可约束（也就是说商业版若想完全脱离 GPL，需要把 gopeed 这类 GPL 依赖剥离或替换）。
+
+联系方式：通过 GitHub `@autogame-17` 私信，或在 issue 里留 contact 邮箱。
 
 ## Credits
 

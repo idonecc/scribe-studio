@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Package media wraps ffmpeg for audio extraction. The rest of the
 // pipeline only cares about "give me a 16 kHz mono PCM WAV"; keep that
 // assumption local to this package.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Package transcribe defines the engine-agnostic contract the pipeline
 // speaks to. LocalWhisperCpp is the default implementation; cloud
 // providers (OpenAI, Groq) slot into the same Provider interface.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { useCallback, useState } from 'react'
 import { X, Sparkles, Check, XCircle, BookPlus, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'

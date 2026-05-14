@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { useCallback, useEffect, useState } from 'react'
 import { Search, Plus, Trash2, X, TrendingUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
