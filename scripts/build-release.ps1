@@ -49,7 +49,11 @@ Write-Host "    commit=$commit date=$dateUtc core=$coreRev"
 & wails build -platform windows/amd64 -ldflags $ldflags
 if ($LASTEXITCODE -ne 0) { throw "wails build failed" }
 
-$exe = Join-Path $repoRoot "build/bin/scribe-studio.exe"
+# wails.json sets `outputfilename: "scribe"`, so the Windows binary is
+# `scribe.exe` — not `scribe-studio.exe`. The `name` field controls the
+# macOS .app bundle name, not the executable inside it. Trying to find
+# `scribe-studio.exe` is what tripped v0.4.1's first windows build.
+$exe = Join-Path $repoRoot "build/bin/scribe.exe"
 if (-not (Test-Path $exe)) {
     Get-ChildItem (Join-Path $repoRoot "build/bin")
     throw "expected $exe to exist after build"

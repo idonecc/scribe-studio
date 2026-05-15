@@ -201,7 +201,10 @@ jobs:
         run: |
           $tag = "${{ steps.meta.outputs.tag }}"
           $zipName = "scribe-$tag-windows-amd64.zip"
-          $exePath = "build/bin/scribe-studio.exe"
+          # wails.json's outputfilename = "scribe", so the binary is
+          # scribe.exe (not scribe-studio.exe — the latter is only the
+          # macOS .app bundle name driven by the `name` field).
+          $exePath = "build/bin/scribe.exe"
           if (-not (Test-Path $exePath)) {
             Write-Error "expected $exePath to exist after build"
             exit 1
