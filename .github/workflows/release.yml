@@ -101,11 +101,13 @@ jobs:
           ls -la "$dmg_name"
           echo "DMG_PATH=$dmg_name" >> "$GITHUB_ENV"
 
-      - name: Upload DMG as workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: scribe-darwin-${{ matrix.arch }}-${{ steps.meta.outputs.tag }}
-          path: ${{ env.DMG_PATH }}
+      # NOTE: we deliberately don't upload-artifact the DMG. The release
+      # publish step below already pushes it to the GitHub Release as a
+      # permanent asset, and Actions Storage charges by 2x if we keep
+      # the workflow-artifact copy too. Workflow artifacts only made
+      # sense when we used them to debug a failing run; release assets
+      # are the user-facing download path and don't count against the
+      # Actions storage quota.
 
       # Each matrix job uploads its own asset to the release; softprops
       # creates the release on first run and appends to it on subsequent
@@ -220,11 +222,9 @@ jobs:
           Get-Item $zipName
           "ZIP_PATH=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Upload zip as workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: scribe-windows-amd64-${{ steps.meta.outputs.tag }}
-          path: ${{ env.ZIP_PATH }}
+      # See macOS job comment: workflow-artifact upload is deliberately
+      # skipped to keep us under the free Actions storage quota. The
+      # release-asset upload below is what users actually download.
 
       - name: Publish GitHub release
         if: github.event_name == 'push'
