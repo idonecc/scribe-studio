@@ -32,6 +32,7 @@ import {
   PickDownloadDir,
   GetXiaoyuzhouAuthStatus,
   SetXiaoyuzhouCredentials,
+  SetActiveModel,
 } from "../../wailsjs/go/scribe/App";
 import { EventsOn } from "../../wailsjs/runtime/runtime";
 import type { proofread, scribe, sphkit } from "../../wailsjs/go/models";
@@ -829,6 +830,17 @@ function TranscribeTab() {
     }
   }
 
+  async function activate(key: string) {
+    try {
+      await SetActiveModel(key);
+      toast.success(`已切换到 ${key}`);
+      const list = await ListModels();
+      setModels(list ?? []);
+    } catch (e) {
+      toast.error(String(e).replace(/^Error: /, ""));
+    }
+  }
+
   return (
     <div className="space-y-4">
       <Card>
@@ -865,7 +877,14 @@ function TranscribeTab() {
                       <span className="font-mono text-sm font-medium">
                         {m.key}
                       </span>
-                      {m.installed && <Badge variant="success">已安装</Badge>}
+                      {m.installed && !m.active && (
+                        <Badge variant="success">已安装</Badge>
+                      )}
+                      {m.active && (
+                        <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">
+                          使用中
+                        </Badge>
+                      )}
                       {/* Quantized badge: keys carrying the ggml q5_0
                           / q8_0 etc. suffix are smaller + faster but
                           have a (barely visible) quality cost. We tag
@@ -905,6 +924,16 @@ function TranscribeTab() {
                       className="gap-1.5"
                     >
                       <Download className="h-3.5 w-3.5" /> 下载
+                    </Button>
+                  )}
+                  {m.installed && !m.active && !isDownloading && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => activate(m.key)}
+                      className="gap-1.5"
+                    >
+                      切换
                     </Button>
                   )}
                 </div>

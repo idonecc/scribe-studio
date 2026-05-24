@@ -34,6 +34,11 @@ type ModelSummary struct {
 	Bytes     int64  `json:"bytes"`
 	Label     string `json:"label"`
 	Installed bool   `json:"installed"`
+	// Active is true when this is the user's manually-chosen model
+	// (transcribe-preferences.json). At most one model can be Active.
+	// When the user hasn't picked anything yet, all entries are false
+	// and the pipeline falls back to quality-first auto-pick.
+	Active bool `json:"active"`
 }
 
 type TranscribeSettings struct {
@@ -329,13 +334,33 @@ func (a *App) GetTranscribeSettings() TranscribeSettings {
 	}
 	return TranscribeSettings{
 		AutoEnabled: auto,
-		Model:       "base",
+		Model:       transcribe.LoadPreferences().ActiveModel,
 		Language:    "auto",
 	}
 }
 
-// ListModels reports every known whisper model + whether it's on disk.
+// SetActiveModel persists the user's manually-chosen Whisper model so the
+// next transcription run uses it instead of quality-first auto-pick.
+// Refuses unknown keys and uninstalled models — the UI is responsible
+// for only showing 切换 buttons on already-installed entries, but defend
+// in depth in case of a stale frontend state.
+func (a *App) SetActiveModel(key string) error {
+	spec, ok := models.SpecByKey(key)
+	if !ok {
+		return fmt.Errorf("unknown model: %s", key)
+	}
+	if inst, _ := models.IsInstalled(spec); !inst {
+		return fmt.Errorf("model not installed: %s", key)
+	}
+	prefs := transcribe.LoadPreferences()
+	prefs.ActiveModel = key
+	return transcribe.SavePreferences(prefs)
+}
+
+// ListModels reports every known whisper model + whether it's on disk +
+// whether it's the currently active (user-chosen) one.
 func (a *App) ListModels() []ModelSummary {
+	active := transcribe.LoadPreferences().ActiveModel
 	out := make([]ModelSummary, 0, len(models.Known))
 	for _, spec := range models.Known {
 		inst, _ := models.IsInstalled(spec)
@@ -346,6 +371,7 @@ func (a *App) ListModels() []ModelSummary {
 			Bytes:     spec.Bytes,
 			Label:     spec.Label,
 			Installed: inst,
+			Active:    inst && spec.Key == active,
 		})
 	}
 	return out

@@ -484,7 +484,7 @@ func (p *Pipeline) runJob(job *Job) error {
 	result, err := p.provider.Transcribe(p.ctx, transcribe.Request{
 		AudioPath: wav,
 		Language:  "auto",
-		Model:     pickInstalledModel(),
+		Model:     pickInstalledModel(transcribe.LoadPreferences().ActiveModel),
 		OnProgress: func(frac float64, msg string) {
 			cur, ok := p.state.Get(job.TaskID)
 			if !ok {
