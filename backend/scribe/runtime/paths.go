@@ -62,8 +62,27 @@ func SubDir(parts ...string) (string, error) {
 	return p, nil
 }
 
-// ModelsDir is where whisper ggml models live.
-func ModelsDir() (string, error) { return SubDir("models") }
+// ModelsDir is where whisper ggml models live. Independent from AppSupportDir
+// so all model files can live under a unified ~/models/<App> convention,
+// shared with other model-using tools (omlx, MyType, etc.). Override with
+// SCRIBE_MODELS_DIR env var if needed.
+func ModelsDir() (string, error) {
+	if v := os.Getenv("SCRIBE_MODELS_DIR"); v != "" {
+		if err := os.MkdirAll(v, 0o755); err != nil {
+			return "", err
+		}
+		return v, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	p := filepath.Join(home, "models", appName)
+	if err := os.MkdirAll(p, 0o755); err != nil {
+		return "", err
+	}
+	return p, nil
+}
 
 // TranscriptsDir is where per-task JSON transcripts are persisted.
 func TranscriptsDir() (string, error) { return SubDir("transcripts") }
